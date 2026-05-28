@@ -1,0 +1,40 @@
+services:
+  ingestion-api:
+    build: ./ingestion-api
+    container_name: levatas-ingestion
+    ports:
+      - "5010:5000"
+    environment:
+      PORT: 5000
+      AI_SERVICE_URL: http://ai-service:5001
+      REVIEW_SERVICE_URL: http://review-service:5002
+      CONFIDENCE_THRESHOLD: "0.70"
+    depends_on:
+      - ai-service
+      - review-service
+
+  ai-service:
+    build: ./ai-service
+    container_name: levatas-ai
+    ports:
+      - "5011:5001"
+
+  review-service:
+    build: ./review-service
+    container_name: levatas-review
+    ports:
+      - "5012:5002"
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+      args:
+        VITE_INGESTION_URL: http://localhost:5010
+        VITE_REVIEW_URL: http://localhost:5012
+    container_name: levatas-dashboard
+    ports:
+      - "3009:80"
+    depends_on:
+      - ingestion-api
+      - review-service

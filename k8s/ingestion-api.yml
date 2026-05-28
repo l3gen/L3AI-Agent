@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestion-api
+  namespace: levatas
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ingestion-api
+  template:
+    metadata:
+      labels:
+        app: ingestion-api
+    spec:
+      containers:
+        - name: ingestion-api
+          image: levatas-ingestion-api:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 5000
+          env:
+            - name: AI_SERVICE_URL
+              value: "http://ai-service:5001"
+            - name: REVIEW_SERVICE_URL
+              value: "http://review-service:5002"
+            - name: CONFIDENCE_THRESHOLD
+              value: "0.70"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "300m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingestion-api
+  namespace: levatas
+spec:
+  type: NodePort
+  selector:
+    app: ingestion-api
+  ports:
+    - port: 5000
+      targetPort: 5000
+      nodePort: 30500
