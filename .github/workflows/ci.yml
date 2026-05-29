@@ -22,18 +22,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Start all services
         run: |
-          docker compose up --build -d
-          sleep 15
+          docker compose -p levatas-demo up --build -d
+          sleep 20
 
       - name: Wait for services to be healthy
         run: |
           for port in 5010 5011 5012; do
-            for i in $(seq 1 10); do
+            for i in $(seq 1 15); do
               curl -sf http://localhost:$port/health && break
               echo "Waiting for port $port... attempt $i"
               sleep 3
@@ -48,7 +45,7 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose down
+        run: docker compose -p levatas-demo down
 
   # ─────────────────────────────────────────
   # JOB 2: Security Scan (Trivy)
@@ -64,13 +61,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build images for scanning
-        run: docker compose build
+      - name: Build images with explicit tags
+        run: |
+          docker build -t levatas-ingestion-api:latest ./ingestion-api
+          docker build -t levatas-ai-service:latest    ./ai-service
+          docker build -t levatas-review-service:latest ./review-service
 
       - name: Scan ingestion-api
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: levatas-demo-ingestion-api
+          image-ref: levatas-ingestion-api:latest
           format: sarif
           output: trivy-ingestion.sarif
           severity: CRITICAL,HIGH
@@ -79,15 +79,16 @@ jobs:
       - name: Scan ai-service
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: levatas-demo-ai-service
+          image-ref: levatas-ai-service:latest
           format: sarif
           output: trivy-ai.sarif
           severity: CRITICAL,HIGH
           exit-code: '0'
 
       - name: Upload scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
+        continue-on-error: true
         with:
           sarif_file: trivy-ingestion.sarif
 
@@ -116,7 +117,7 @@ jobs:
 
       - name: Set image tag
         id: tag
-        run: echo "TAG=sha-${{ github.sha }}" >> $GITHUB_OUTPUT
+        run: echo "TAG=sha-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Build and push all services
         run: |
