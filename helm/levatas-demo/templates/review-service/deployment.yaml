@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.reviewService.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.reviewService.name }}
+    {{- include "levatas.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.reviewService.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.reviewService.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.reviewService.name }}
+    spec:
+      containers:
+        - name: {{ .Values.reviewService.name }}
+          image: {{ include "levatas.image" (dict "image" .Values.reviewService.image "root" .) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.reviewService.port }}
+          env:
+            - name: PORT
+              value: {{ .Values.reviewService.port | quote }}
+          {{- include "levatas.readinessProbe" (dict "port" .Values.reviewService.port) | nindent 10 }}
+          {{- include "levatas.livenessProbe"  (dict "port" .Values.reviewService.port) | nindent 10 }}
+          resources:
+            {{- toYaml .Values.reviewService.resources | nindent 12 }}

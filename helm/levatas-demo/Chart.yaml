@@ -1,0 +1,14 @@
+apiVersion: v2
+name: levatas-demo
+description: Drone inspection AI platform — 4 microservices with human-in-the-loop review
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - ai
+  - drone
+  - inspection
+  - computer-vision
+maintainers:
+  - name: l3gen
+    url: https://github.com/l3gen

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.ingestionApi.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.ingestionApi.name }}
+    {{- include "levatas.labels" . | nindent 4 }}
+spec:
+  type: NodePort
+  selector:
+    app: {{ .Values.ingestionApi.name }}
+  ports:
+    - protocol: TCP
+      port: {{ .Values.ingestionApi.port }}
+      targetPort: {{ .Values.ingestionApi.port }}
+      nodePort: {{ .Values.ingestionApi.nodePort }}

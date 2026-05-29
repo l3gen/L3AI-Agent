@@ -1,0 +1,81 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Levatas Demo — Helm Values
+# Override any value with: helm install levatas-demo ./helm/levatas-demo -f custom-values.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+
+namespace: levatas
+
+# Image registry — change to your GHCR or private registry for production
+image:
+  registry: ghcr.io/l3gen
+  pullPolicy: Never   # Never = use local image (minikube). Use IfNotPresent for production.
+  tag: latest
+
+# AI pipeline config
+ai:
+  confidenceThreshold: "0.70"
+
+# ── Ingestion API ─────────────────────────────────────────────────────────────
+ingestionApi:
+  name: ingestion-api
+  replicaCount: 1
+  image: levatas-demo-ingestion-api
+  port: 5000
+  nodePort: 30500
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "300m"
+
+# ── AI Service ────────────────────────────────────────────────────────────────
+aiService:
+  name: ai-service
+  replicaCount: 1
+  image: levatas-demo-ai-service
+  port: 5001
+  nodePort: 30501
+  # GPU support — set to true and configure runtime for production inference
+  gpu:
+    enabled: false
+    # nvidiaVisibleDevices: all
+    # nvidiaDriverCapabilities: compute,utility
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# ── Review Service ────────────────────────────────────────────────────────────
+reviewService:
+  name: review-service
+  replicaCount: 1
+  image: levatas-demo-review-service
+  port: 5002
+  nodePort: 30502
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "200m"
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+dashboard:
+  name: dashboard
+  replicaCount: 1
+  image: levatas-demo-dashboard
+  port: 80
+  nodePort: 30300
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "200m"
