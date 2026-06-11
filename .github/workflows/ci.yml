@@ -77,7 +77,7 @@ jobs:
         working-directory: ai-service
         run: |
           pip install pip-audit --quiet
-          pip-audit -r requirements.txt --severity high
+          pip-audit -r requirements.txt
 
   # ─────────────────────────────────────────
   # JOB 3: Smoke & Regression Tests
