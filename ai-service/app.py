@@ -76,5 +76,5 @@ def analyze():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=False)
+# Development only. In production this file is served by Gunicorn (see Dockerfile).
+# app.run() is intentionally not called here to avoid exposing a dev server publicly.
