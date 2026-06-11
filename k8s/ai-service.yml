@@ -13,18 +13,45 @@ spec:
       labels:
         app: ai-service
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+
       containers:
         - name: ai-service
           image: levatas-ai-service:latest
-          imagePullPolicy: Never
+          imagePullPolicy: Always
           ports:
             - containerPort: 5001
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          volumeMounts:
+            - name: tmp-dir
+              mountPath: /tmp
+
           readinessProbe:
             httpGet:
               path: /health
               port: 5001
             initialDelaySeconds: 10
             periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 3
+
           resources:
             requests:
               memory: "256Mi"
@@ -32,6 +59,10 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+
+      volumes:
+        - name: tmp-dir
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

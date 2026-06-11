@@ -12,11 +12,80 @@ env:
 
 jobs:
   # ─────────────────────────────────────────
-  # JOB 1: Smoke & Regression Tests
+  # JOB 1: Secret Scanning
+  # Blocks everything — leaked secrets must never reach main.
+  # ─────────────────────────────────────────
+  secret-scan:
+    name: Secret Scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so Gitleaks can scan all commits
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # exit-code defaults to 1 on leak found — this job will fail the PR
+
+  # ─────────────────────────────────────────
+  # JOB 2: SAST & Dependency Audit
+  # Static analysis catches insecure code patterns before runtime.
+  # ─────────────────────────────────────────
+  sast:
+    name: SAST & Dependency Audit
+    runs-on: ubuntu-latest
+    needs: secret-scan
+    permissions:
+      security-events: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Semgrep SAST ──────────────────────────────────────────────────────
+      - name: Run Semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/nodejs
+            p/python
+            p/docker
+            p/owasp-top-ten
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+        # Semgrep exits non-zero on findings — fails the job
+        continue-on-error: false
+
+      # ── Node.js dependency audit ──────────────────────────────────────────
+      - name: npm audit — ingestion-api
+        working-directory: ingestion-api
+        run: npm ci --prefer-offline && npm audit --audit-level=high
+
+      - name: npm audit — review-service
+        working-directory: review-service
+        run: npm ci --prefer-offline && npm audit --audit-level=high
+
+      - name: npm audit — dashboard
+        working-directory: dashboard
+        run: npm ci --prefer-offline && npm audit --audit-level=high
+
+      # ── Python dependency audit ───────────────────────────────────────────
+      - name: pip-audit — ai-service
+        working-directory: ai-service
+        run: |
+          pip install pip-audit --quiet
+          pip-audit -r requirements.txt --severity high
+
+  # ─────────────────────────────────────────
+  # JOB 3: Smoke & Regression Tests
   # ─────────────────────────────────────────
   test:
     name: Smoke & Regression Tests
     runs-on: ubuntu-latest
+    needs: sast
 
     steps:
       - name: Checkout code
@@ -48,10 +117,11 @@ jobs:
         run: docker compose -p levatas-demo down
 
   # ─────────────────────────────────────────
-  # JOB 2: Security Scan (Trivy)
+  # JOB 4: Container Image Security Scan (Trivy)
+  # ALL images scanned. CRITICAL/HIGH findings block the build.
   # ─────────────────────────────────────────
   security-scan:
-    name: Trivy Security Scan
+    name: Trivy Container Scan
     runs-on: ubuntu-latest
     needs: test
     permissions:
@@ -61,12 +131,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build images with explicit tags
+      - name: Build all images
         run: |
-          docker build -t levatas-ingestion-api:latest ./ingestion-api
-          docker build -t levatas-ai-service:latest    ./ai-service
+          docker build -t levatas-ingestion-api:latest  ./ingestion-api
+          docker build -t levatas-ai-service:latest     ./ai-service
           docker build -t levatas-review-service:latest ./review-service
+          docker build -t levatas-dashboard:latest      ./dashboard
 
+      # ── ingestion-api ─────────────────────────────────────────────────────
       - name: Scan ingestion-api
         uses: aquasecurity/trivy-action@master
         with:
@@ -74,8 +146,9 @@ jobs:
           format: sarif
           output: trivy-ingestion.sarif
           severity: CRITICAL,HIGH
-          exit-code: '0'
+          exit-code: '1'          # FIXED: was '0' — now blocks the build
 
+      # ── ai-service ────────────────────────────────────────────────────────
       - name: Scan ai-service
         uses: aquasecurity/trivy-action@master
         with:
@@ -83,17 +156,38 @@ jobs:
           format: sarif
           output: trivy-ai.sarif
           severity: CRITICAL,HIGH
-          exit-code: '0'
+          exit-code: '1'
 
-      - name: Upload scan results
-        uses: github/codeql-action/upload-sarif@v4
+      # ── review-service (was missing) ──────────────────────────────────────
+      - name: Scan review-service
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: levatas-review-service:latest
+          format: sarif
+          output: trivy-review.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+      # ── dashboard ─────────────────────────────────────────────────────────
+      - name: Scan dashboard
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: levatas-dashboard:latest
+          format: sarif
+          output: trivy-dashboard.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+      - name: Upload all SARIF results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         continue-on-error: true
         with:
-          sarif_file: trivy-ingestion.sarif
+          sarif_file: '.'      # uploads all *.sarif files in the repo root
 
   # ─────────────────────────────────────────
-  # JOB 3: Build & Push Images
+  # JOB 5: Build & Push Images
+  # Only runs on main, only after all security gates pass.
   # ─────────────────────────────────────────
   build:
     name: Build & Push Images
@@ -103,10 +197,14 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write    # needed for Cosign keyless signing
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -119,15 +217,21 @@ jobs:
         id: tag
         run: echo "TAG=sha-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
-      - name: Build and push all services
+      - name: Build, push, and sign all services
         run: |
           for service in ingestion-api ai-service review-service dashboard; do
+            FULL_TAG="${{ env.IMAGE_PREFIX }}-${service}:${{ steps.tag.outputs.TAG }}"
+
             docker build \
-              -t ${{ env.IMAGE_PREFIX }}-${service}:${{ steps.tag.outputs.TAG }} \
-              -t ${{ env.IMAGE_PREFIX }}-${service}:latest \
+              -t "${FULL_TAG}" \
+              -t "${{ env.IMAGE_PREFIX }}-${service}:latest" \
               ./${service}
-            docker push ${{ env.IMAGE_PREFIX }}-${service}:${{ steps.tag.outputs.TAG }}
-            docker push ${{ env.IMAGE_PREFIX }}-${service}:latest
+
+            docker push "${FULL_TAG}"
+            docker push "${{ env.IMAGE_PREFIX }}-${service}:latest"
+
+            # Sign the image — verifiable proof it came from this pipeline
+            cosign sign --yes "${FULL_TAG}"
           done
 
       - name: Save release tag

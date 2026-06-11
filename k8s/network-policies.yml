@@ -1,0 +1,161 @@
+# NetworkPolicies — Zero-trust network segmentation inside the cluster.
+#
+# By default, Kubernetes allows ALL pods to talk to ALL other pods (flat network).
+# A compromised pod can reach every other service, database, and K8s API.
+# NetworkPolicies flip this to default-deny, then explicitly allow only the
+# traffic paths your architecture actually requires.
+#
+# Architecture flows this enforces:
+#   dashboard → ingestion-api (upload, inspections)
+#   ingestion-api → ai-service (analyze)
+#   ingestion-api → review-service (queue)
+#   review-service → ingestion-api (inspect detail)
+#   ai-service has no outbound — it only responds to requests
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 1. DEFAULT DENY ALL — nothing can talk to anything until explicitly allowed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: levatas
+spec:
+  podSelector: {}        # matches every pod in the namespace
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# 2. Allow ingestion-api to receive traffic from the dashboard (and externally
+#    via the NodePort). Also allow DNS (UDP 53) for all pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingestion-api-ingress
+  namespace: levatas
+spec:
+  podSelector:
+    matchLabels:
+      app: ingestion-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: dashboard
+      ports:
+        - protocol: TCP
+          port: 5000
+    # Allow external traffic through the NodePort (kube-proxy source)
+    - ports:
+        - protocol: TCP
+          port: 5000
+
+---
+# 3. Allow ingestion-api to call out to ai-service and review-service only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingestion-api-egress
+  namespace: levatas
+spec:
+  podSelector:
+    matchLabels:
+      app: ingestion-api
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: ai-service
+      ports:
+        - protocol: TCP
+          port: 5001
+    - to:
+        - podSelector:
+            matchLabels:
+              app: review-service
+      ports:
+        - protocol: TCP
+          port: 5002
+    # DNS — all pods need this to resolve service names
+    - ports:
+        - protocol: UDP
+          port: 53
+
+---
+# 4. ai-service only receives calls from ingestion-api.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ai-service-ingress
+  namespace: levatas
+spec:
+  podSelector:
+    matchLabels:
+      app: ai-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: ingestion-api
+      ports:
+        - protocol: TCP
+          port: 5001
+
+---
+# 5. review-service receives calls from ingestion-api and the dashboard.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-review-service-ingress
+  namespace: levatas
+spec:
+  podSelector:
+    matchLabels:
+      app: review-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: ingestion-api
+        - podSelector:
+            matchLabels:
+              app: dashboard
+      ports:
+        - protocol: TCP
+          port: 5002
+    - ports:
+        - protocol: TCP
+          port: 5002
+
+---
+# 6. review-service egress — can call back to ingestion-api for inspection detail.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-review-service-egress
+  namespace: levatas
+spec:
+  podSelector:
+    matchLabels:
+      app: review-service
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: ingestion-api
+      ports:
+        - protocol: TCP
+          port: 5000
+    - ports:
+        - protocol: UDP
+          port: 53

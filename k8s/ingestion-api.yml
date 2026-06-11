@@ -13,25 +13,69 @@ spec:
       labels:
         app: ingestion-api
     spec:
+      # Pod-level security: no privilege escalation at the pod level.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault    # blocks ~100 risky syscalls with no app impact
+
       containers:
         - name: ingestion-api
           image: levatas-ingestion-api:latest
-          imagePullPolicy: Never
+          imagePullPolicy: Always   # FIXED: Never = uses whatever's cached locally,
+                                    # bypassing image pulls and security scanning.
+                                    # Always = pulls on every pod creation.
           ports:
             - containerPort: 5000
+
+          # Pull non-secret config from the ConfigMap, secrets from the Secret.
           env:
             - name: AI_SERVICE_URL
-              value: "http://ai-service:5001"
+              valueFrom:
+                secretKeyRef:
+                  name: levatas-config
+                  key: AI_SERVICE_URL
             - name: REVIEW_SERVICE_URL
-              value: "http://review-service:5002"
+              valueFrom:
+                secretKeyRef:
+                  name: levatas-config
+                  key: REVIEW_SERVICE_URL
             - name: CONFIDENCE_THRESHOLD
-              value: "0.70"
+              valueFrom:
+                secretKeyRef:
+                  name: levatas-config
+                  key: CONFIDENCE_THRESHOLD
+
+          # Container-level security context — defense in depth.
+          securityContext:
+            allowPrivilegeEscalation: false   # container can't sudo/setuid
+            readOnlyRootFilesystem: true       # attackers can't write malware to disk
+            capabilities:
+              drop: ["ALL"]                   # drop every Linux capability; add back
+              # add: ["NET_BIND_SERVICE"]     # only what you need (e.g., port <1024)
+
+          # Writable scratch space for /tmp (uploads) since root fs is read-only.
+          volumeMounts:
+            - name: tmp-uploads
+              mountPath: /tmp
+
           readinessProbe:
             httpGet:
               path: /health
               port: 5000
             initialDelaySeconds: 5
             periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+
           resources:
             requests:
               memory: "128Mi"
@@ -39,6 +83,10 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "300m"
+
+      volumes:
+        - name: tmp-uploads
+          emptyDir: {}    # ephemeral scratch space; wiped when pod restarts
 ---
 apiVersion: v1
 kind: Service
