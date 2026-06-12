@@ -17,6 +17,10 @@ RUN npm ci --omit=dev
 FROM node:20-alpine AS runtime
 WORKDIR /app
 
+# Upgrade all Alpine packages to get latest security patches.
+# This fixes OS-level CVEs that Trivy flags on the base image packages.
+RUN apk upgrade --no-cache
+
 # Non-root user — running as root inside a container means a container escape
 # equals root on the host. Least privilege limits the blast radius.
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup

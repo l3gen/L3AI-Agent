@@ -140,15 +140,11 @@ jobs:
           docker build -t levatas-dashboard:latest      ./dashboard
 
       # ── ingestion-api ─────────────────────────────────────────────────────
-      # Table scan first — shows findings in plain text in the logs so we can read them.
+      # Raw shell scan — prints the CVE table directly to logs so we can see exactly what's failing.
       - name: Scan ingestion-api (table output for visibility)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: levatas-ingestion-api:latest
-          format: table
-          severity: CRITICAL,HIGH
-          exit-code: '0'
-          ignore-unfixed: true
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          trivy image --format table --severity CRITICAL,HIGH --ignore-unfixed levatas-ingestion-api:latest || true
 
       - name: Scan ingestion-api
         uses: aquasecurity/trivy-action@master
