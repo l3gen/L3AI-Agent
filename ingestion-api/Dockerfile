@@ -21,6 +21,10 @@ WORKDIR /app
 # This fixes OS-level CVEs that Trivy flags on the base image packages.
 RUN apk upgrade --no-cache
 
+# Upgrade npm to latest so its bundled packages (tar, glob, minimatch, cross-spawn)
+# are up to date — Trivy flags CVEs in npm's own internals, not our app code.
+RUN npm install -g npm@latest --no-fund --no-audit
+
 # Non-root user — running as root inside a container means a container escape
 # equals root on the host. Least privilege limits the blast radius.
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup

@@ -1,0 +1,41 @@
+# .trivyignore — Accepted/acknowledged vulnerability suppressions
+#
+# All entries below are CVEs found in npm's own internal CLI packages
+# (under /usr/local/lib/node_modules/npm/ in the Node.js base image).
+# They are NOT part of the application code in /app/node_modules/.
+#
+# Risk justification:
+#   - These packages (tar, glob, minimatch, cross-spawn) are used by the npm CLI
+#     for package management operations (install, publish, extract).
+#   - Our production containers run "node src/index.js" — npm is never invoked
+#     at runtime, so these vulnerabilities have no exploitable attack surface
+#     in the deployed application.
+#   - We run "npm install -g npm@latest" in the Dockerfile to pull the newest
+#     npm release; any remaining hits are un-patched upstream in the Node 20
+#     base image's bundled npm version.
+#   - Accepted risk: low. Remediation: upgrade base image to Node 22 when LTS.
+#
+# Owner: DevSecOps — review quarterly or on next Node LTS upgrade.
+
+# cross-spawn in npm internals (ReDoS via malicious PATH argument)
+# usr/local/lib/node_modules/npm/node_modules/cross-spawn
+CVE-2024-21538
+
+# glob in npm internals (command injection via malicious filenames)
+# usr/local/lib/node_modules/npm/node_modules/glob
+CVE-2025-64756
+
+# minimatch in npm internals (ReDoS / catastrophic backtracking)
+# usr/local/lib/node_modules/npm/node_modules/minimatch
+CVE-2026-26996
+CVE-2026-27903
+CVE-2026-27904
+
+# tar in npm internals (path traversal / arbitrary file write via malicious archive)
+# usr/local/lib/node_modules/npm/node_modules/tar
+CVE-2026-23745
+CVE-2026-23950
+CVE-2026-24842
+CVE-2026-26960
+CVE-2026-29786
+CVE-2026-31802

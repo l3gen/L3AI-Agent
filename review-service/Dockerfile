@@ -10,6 +10,8 @@ WORKDIR /app
 
 RUN apk upgrade --no-cache
 
+RUN npm install -g npm@latest --no-fund --no-audit
+
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 COPY --from=deps /app/node_modules ./node_modules
