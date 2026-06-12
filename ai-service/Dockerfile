@@ -10,6 +10,10 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 FROM python:3.11-slim AS runtime
 WORKDIR /app
 
+# Patch all Debian base-image packages to latest security versions.
+# Equivalent of apk upgrade for Alpine — fixes OS-level CVEs Trivy flags.
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
 # Non-root user
 RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 

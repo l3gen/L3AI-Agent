@@ -157,6 +157,9 @@ jobs:
           ignore-unfixed: true     # only block on vulns that have a fix available
 
       # ── ai-service ────────────────────────────────────────────────────────
+      - name: Scan ai-service (table output for visibility)
+        run: trivy image --format table --severity CRITICAL,HIGH --ignore-unfixed levatas-ai-service:latest || true
+
       - name: Scan ai-service
         uses: aquasecurity/trivy-action@master
         with:
