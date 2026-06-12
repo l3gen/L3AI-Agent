@@ -139,65 +139,104 @@ jobs:
           docker build -t levatas-review-service:latest ./review-service
           docker build -t levatas-dashboard:latest      ./dashboard
 
-      # ── ingestion-api ─────────────────────────────────────────────────────
-      # Raw shell scan — prints the CVE table directly to logs so we can see exactly what's failing.
-      - name: Scan ingestion-api (table output for visibility)
-        run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-          trivy image --format table --severity CRITICAL,HIGH --ignore-unfixed levatas-ingestion-api:latest || true
+      # Install Trivy once, shared across all scans
+      - name: Install Trivy
+        run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
 
+      # ── Security gates (table format — output visible in logs, fails build) ─
+      # .trivyignore at repo root is auto-loaded and suppresses accepted risks.
       - name: Scan ingestion-api
+        run: trivy image --format table --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 levatas-ingestion-api:latest
+
+      - name: Scan ai-service
+        run: trivy image --format table --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 levatas-ai-service:latest
+
+      - name: Scan review-service
+        run: trivy image --format table --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 levatas-review-service:latest
+
+      - name: Scan dashboard
+        run: trivy image --format table --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 levatas-dashboard:latest
+
+      # ── SARIF upload for GitHub Security tab (non-blocking, one category per image) ─
+      - name: SARIF — ingestion-api
+        if: always()
         uses: aquasecurity/trivy-action@master
+        continue-on-error: true
         with:
           image-ref: levatas-ingestion-api:latest
           format: sarif
           output: trivy-ingestion.sarif
           severity: CRITICAL,HIGH
-          exit-code: '1'
-          ignore-unfixed: true     # only block on vulns that have a fix available
+          exit-code: '0'
+          ignore-unfixed: true
 
-      # ── ai-service ────────────────────────────────────────────────────────
-      - name: Scan ai-service (table output for visibility)
-        run: trivy image --format table --severity CRITICAL,HIGH --ignore-unfixed levatas-ai-service:latest || true
-
-      - name: Scan ai-service
+      - name: SARIF — ai-service
+        if: always()
         uses: aquasecurity/trivy-action@master
+        continue-on-error: true
         with:
           image-ref: levatas-ai-service:latest
           format: sarif
           output: trivy-ai.sarif
           severity: CRITICAL,HIGH
-          exit-code: '1'
+          exit-code: '0'
           ignore-unfixed: true
 
-      # ── review-service (was missing) ──────────────────────────────────────
-      - name: Scan review-service
+      - name: SARIF — review-service
+        if: always()
         uses: aquasecurity/trivy-action@master
+        continue-on-error: true
         with:
           image-ref: levatas-review-service:latest
           format: sarif
           output: trivy-review.sarif
           severity: CRITICAL,HIGH
-          exit-code: '1'
+          exit-code: '0'
           ignore-unfixed: true
 
-      # ── dashboard ─────────────────────────────────────────────────────────
-      - name: Scan dashboard
+      - name: SARIF — dashboard
+        if: always()
         uses: aquasecurity/trivy-action@master
+        continue-on-error: true
         with:
           image-ref: levatas-dashboard:latest
           format: sarif
           output: trivy-dashboard.sarif
           severity: CRITICAL,HIGH
-          exit-code: '1'
+          exit-code: '0'
           ignore-unfixed: true
 
-      - name: Upload all SARIF results to GitHub Security tab
+      - name: Upload ingestion-api to Security tab
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         continue-on-error: true
         with:
-          sarif_file: '.'      # uploads all *.sarif files in the repo root
+          sarif_file: trivy-ingestion.sarif
+          category: trivy-ingestion-api
+
+      - name: Upload ai-service to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: trivy-ai.sarif
+          category: trivy-ai-service
+
+      - name: Upload review-service to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: trivy-review.sarif
+          category: trivy-review-service
+
+      - name: Upload dashboard to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: trivy-dashboard.sarif
+          category: trivy-dashboard
 
   # ─────────────────────────────────────────
   # JOB 5: Build & Push Images

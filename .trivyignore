@@ -39,3 +39,20 @@ CVE-2026-24842
 CVE-2026-26960
 CVE-2026-29786
 CVE-2026-31802
+
+# ── Python base image build-tool CVEs (python:3.11-slim) ─────────────────────
+#
+# Risk justification:
+#   - jaraco.context and wheel are Python packaging utilities bundled with pip
+#     inside the python:3.11-slim base image.
+#   - Our containers run "gunicorn app:app" — pip and its dependencies are
+#     never invoked at runtime; no exploitable attack surface exists.
+#   - Accepted risk: low. Remediation: upgrade to python:3.12-slim when stable.
+#
+# Owner: DevSecOps — review quarterly or on next Python base image upgrade.
+
+# jaraco.context (pip/setuptools dep) — path traversal via malicious tar archive
+CVE-2026-23949
+
+# wheel (Python build tool) — privilege escalation via malicious wheel file
+CVE-2026-24049
